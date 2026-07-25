@@ -29,14 +29,17 @@ def init_db():
 
 @app.route("/")
 def index():
-    posts = db().execute("SELECT * FROM post ORDER BY id DESC").fetchall()
-    #게시글마다 댓글 매칭해서 딕셔너리로 묶어주기
+    # DB 연결을 한 번만 열어서 필요한 데이터를 가져옴
+    conn = db()
+    posts = conn.execute("SELECT * FROM post ORDER BY id DESC").fetchall()
+    all_comments = conn.execute("SELECT * FROM comment ORDER BY id ASC").fetchall()
+    conn.close() # 데이터를 다 가져왔으니 안전하게 닫아줌
+    
+    # 파이썬 메모리 상에서 게시글 ID에 맞게 분류
     posts_with_comments = []
     for post in posts:
-        comments = db().execute(
-            "SELECT * FROM comment WHERE post_id=? ORDER BY id ASC", 
-            (post["id"],)
-        ).fetchall()
+        # 전체 댓글 중 현재 게시글(post["id"])에 속한 댓글들만 필터링합니다.
+        comments = [c for c in all_comments if c["post_id"] == post["id"]]
         
         posts_with_comments.append({
             "id": post["id"],
@@ -52,9 +55,13 @@ def index():
 @app.route("/register", methods=["POST"])
 def register():
     with db() as conn:
-        conn.execute("INSERT INTO user VALUES(?, ?)",
-                     (request.form["username"], generate_password_hash(request.form["password"])))
+        try:
+            conn.execute("INSERT INTO user VALUES(?, ?)",
+                         (request.form["username"], generate_password_hash(request.form["password"])))
+        except sqlite3.IntegrityError:
+            return redirect("/")
     return redirect("/")
+
 
 
 @app.route("/login", methods=["POST"])
